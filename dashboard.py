@@ -5,7 +5,6 @@
 2. Select your App
 3. Add permissions: pages_read_engagement, pages_show_list, read_insights
 4. Generate token
-""")
 st.stop()
 
 fb_api = FacebookAPI()

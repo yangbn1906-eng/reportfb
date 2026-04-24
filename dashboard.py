@@ -4,7 +4,7 @@
 1. Go to Graph API Explorer
 2. Select your App
 3. Add permissions: pages_read_engagement, pages_show_list, read_insights
-4. Generate token and get page token from /me/accounts
+4. Generate token
 """)
 st.stop()
 
@@ -20,7 +20,7 @@ total_pages = len(pages_config) if pages_data else 0
 mode, search = ui.render_sidebar(total_pages=total_pages)
 
 ui.render_cache_info()
-st.caption("🔐 **Configuration:** Streamlit Secrets (Secure)")
+st.caption("🔐 Configuration: Streamlit Secrets (Secure)")
 
 if need_fetch:
 with st.spinner(f"📡 Fetching {len(pages_config)} page(s) from Facebook..."):

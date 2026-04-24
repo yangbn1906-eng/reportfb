@@ -637,7 +637,7 @@ def main():
     ui.render_cache_info()
     
     if need_fetch:
-        with st.spinner(f"📡 Loading data  {len(pages)} page ..."):
+        with st.spinner(f"📡 Loading Data {len(pages)} Fanpage ..."):
             pages_data = []
             progress = st.progress(0)
             

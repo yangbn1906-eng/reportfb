@@ -637,7 +637,7 @@ def main():
     ui.render_cache_info()
     
     if need_fetch:
-        with st.spinner(f"📡 Đang tải {len(pages)} trang từ Facebook (chỉ 1 lần mỗi giờ)..."):
+        with st.spinner(f"📡 Đang Load Dữ Liệu {len(pages)} Page ..."):
             pages_data = []
             progress = st.progress(0)
             

@@ -593,43 +593,41 @@ def main():
     fb_handler = FacebookAPIHandler()
     ui = DashboardUI()
     
-    # Try to load config from multiple locations
-    config_path = None
-    possible_paths = ['config.json', 'facebook_config.json', 'fb_config.json']
-    
-    for path in possible_paths:
-        if Path(path).exists():
-            config_path = Path(path)
-            break
-    
-    # Also check in parent directory for cloud deployment
-    if not config_path and Path('../config.json').exists():
-        config_path = Path('../config.json')
-    
-    if not config_path:
-        st.error("❌ Không tìm thấy file config.json")
-        st.code("""
-{
-  "pages": [
-    {
-      "id": "ID_TRANG_CUA_BAN",
-      "name": "Tên Trang Của Bạn", 
-      "access_token": "TOKEN_TRUY_CAP_CUA_BAN"
-    }
-  ]
-}
-        """, language='json')
-        st.info("📝 Vui lòng tạo file 'config.json' với nội dung trên và đặt trong cùng thư mục với ứng dụng")
-        st.stop()
-    
+    # Ưu tiên đọc config từ Streamlit Secrets, nếu không có thì đọc file
+    config = None
     try:
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = json.load(f)
-        st.success(f"✅ Đã tải cấu hình từ {config_path.name}")
+        if 'config_json' in st.secrets:
+            config = json.loads(st.secrets['config_json'])
+            st.success("✅ Đã tải cấu hình từ Streamlit Secrets")
+        elif 'pages' in st.secrets:
+            config = {'pages': st.secrets['pages']}
+            st.success("✅ Đã tải cấu hình từ Streamlit Secrets")
     except Exception as e:
-        st.error(f"Lỗi đọc config: {e}")
+        st.error(f"Lỗi đọc Streamlit Secrets: {e}")
         st.stop()
-    
+
+    if config is None:
+        config_path = None
+        possible_paths = ['config.json', 'facebook_config.json', 'fb_config.json']
+        for path in possible_paths:
+            if Path(path).exists():
+                config_path = Path(path)
+                break
+        if not config_path and Path('../config.json').exists():
+            config_path = Path('../config.json')
+
+        if not config_path:
+            st.error("❌ Không tìm thấy config trong Secrets hoặc file config.json")
+            st.stop()
+
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            st.success(f"✅ Đã tải cấu hình từ {config_path.name}")
+        except Exception as e:
+            st.error(f"Lỗi đọc config: {e}")
+            st.stop()
+
     pages = config.get('pages', [])
     if not pages:
         st.warning("Chưa có trang nào trong config")

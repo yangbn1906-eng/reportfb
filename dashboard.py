@@ -598,10 +598,8 @@ def main():
     try:
         if 'config_json' in st.secrets:
             config = json.loads(st.secrets['config_json'])
-            st.success("✅ Đã tải cấu hình từ Streamlit Secrets")
         elif 'pages' in st.secrets:
             config = {'pages': st.secrets['pages']}
-            st.success("✅ Đã tải cấu hình từ Streamlit Secrets")
     except Exception as e:
         st.error(f"Lỗi đọc Streamlit Secrets: {e}")
         st.stop()
@@ -623,7 +621,6 @@ def main():
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
-            st.success(f"✅ Đã tải cấu hình từ {config_path.name}")
         except Exception as e:
             st.error(f"Lỗi đọc config: {e}")
             st.stop()

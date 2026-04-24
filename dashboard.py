@@ -1,68 +1,109 @@
-# dashboard.py - Meta System Intelligence PRO v3.3 (Cloud Compatible)
+"""
+Meta System Intelligence PRO - Facebook Page Analytics Tool
+Optimized for Streamlit Secrets
+Version: 4.0
+Author: AnBub
+"""
 
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
 import requests
 import json
 import logging
 import hashlib
 import tempfile
-import os
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
 from dataclasses import dataclass, asdict
 import numpy as np
-import time
 
-# ==================== CONFIGURATION ====================
+# ==================== PAGE CONFIG ====================
 st.set_page_config(
-    page_title='Meta System Intelligence PRO v3.3', 
+    page_title='Meta System Intelligence PRO',
+    page_icon='🚀',
     layout='wide',
-    page_icon="🚀"
+    initial_sidebar_state='expanded'
 )
 
-# Setup logging
+# ==================== LOGGING ====================
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
 
-# Constants
-API_VER = 'v25.0'
-CACHE_TTL = 3600
+# ==================== CONSTANTS ====================
+API_VERSION = 'v25.0'
+CACHE_TTL_SECONDS = 3600  # 1 hour
 REQUEST_TIMEOUT = 30
-SESSION_CACHE_KEY = 'facebook_pages_data'
-LAST_FETCH_KEY = 'last_fetch_time'
+SESSION_DATA_KEY = 'fb_pages_data'
+SESSION_TIME_KEY = 'fb_fetch_time'
 
-# Custom CSS
-st.markdown('''
+# ==================== CUSTOM CSS ====================
+st.markdown("""
 <style>
+/* Main background */
 .stApp {
     background: linear-gradient(135deg, #0f172a 0%, #111827 50%, #1e293b 100%);
     color: white;
 }
+
+/* Sidebar */
 [data-testid="stSidebar"] {
     background: rgba(15, 23, 42, 0.95);
     backdrop-filter: blur(10px);
     border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
+
+/* Metric cards */
 [data-testid="stMetric"] {
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    padding: 16px;
     border-radius: 18px;
+    padding: 16px;
     backdrop-filter: blur(8px);
     transition: all 0.3s ease;
 }
+
 [data-testid="stMetric"]:hover {
     transform: translateY(-2px);
     background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(59, 130, 246, 0.5);
 }
+
+/* Buttons */
+div.stButton > button {
+    border-radius: 8px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+div.stButton > button:hover {
+    transform: translateY(-1px);
+}
+
+/* Data tables */
+.stDataFrame {
+    background: transparent !important;
+}
+
+.stDataFrame thead tr th {
+    background: rgba(255, 255, 255, 0.04) !important;
+    color: #fff !important;
+    font-weight: 700 !important;
+}
+
+.stDataFrame tbody tr:hover {
+    background: rgba(59, 130, 246, 0.15) !important;
+}
+
+/* Cache info */
 .cache-info {
     background: rgba(59, 130, 246, 0.1);
     border: 1px solid rgba(59, 130, 246, 0.3);
@@ -71,17 +112,15 @@ st.markdown('''
     font-size: 12px;
     margin-bottom: 10px;
 }
-/* Button styles */
-div.stButton > button {
-    border-radius: 8px;
-    padding: 4px 12px;
-    font-size: 12px;
-    font-weight: 500;
-    transition: all 0.2s ease;
+
+/* Success card */
+.success-card {
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: 18px;
+    padding: 15px;
 }
-div.stButton > button:hover {
-    transform: translateY(-1px);
-}
+
 /* Watermark */
 .watermark-container {
     position: fixed;
@@ -92,6 +131,7 @@ div.stButton > button:hover {
     z-index: 999;
     pointer-events: none;
 }
+
 .watermark {
     background: rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(10px);
@@ -101,24 +141,47 @@ div.stButton > button:hover {
     border: 1px solid rgba(255, 255, 255, 0.15);
     font-size: 12px;
     color: rgba(255, 255, 255, 0.7);
-    font-family: monospace;
 }
+
 .watermark strong {
     color: #14b8a6;
-    font-weight: 600;
+}
+
+/* Green button */
+button[key="refresh_btn"] {
+    background: linear-gradient(90deg, #10b981, #059669);
+    border: none;
+    color: white;
+}
+
+button[key="refresh_btn"]:hover {
+    background: linear-gradient(90deg, #059669, #047857);
+}
+
+/* Red button */
+button[key="clear_btn"] {
+    background: linear-gradient(90deg, #ef4444, #dc2626);
+    border: none;
+    color: white;
+}
+
+button[key="clear_btn"]:hover {
+    background: linear-gradient(90deg, #dc2626, #b91c1c);
 }
 </style>
 
 <div class='watermark-container'>
     <div class='watermark'>
-        💻 Phát triển bởi <strong>AnBub</strong> • © 2026 Meta System Intelligence PRO
+        💻 Developed by <strong>AnBub</strong> • © 2026
     </div>
 </div>
-''', unsafe_allow_html=True)
+""", unsafe_allow_html=True)
+
 
 # ==================== DATA MODELS ====================
 @dataclass
 class FacebookPageData:
+    """Data model for Facebook page analytics"""
     page_id: str
     page_name: str
     followers: int
@@ -130,92 +193,132 @@ class FacebookPageData:
     last_updated: datetime
     error: Optional[str] = None
 
-# ==================== CACHE MANAGER (Cloud Compatible) ====================
-class CacheManager:
-    def __init__(self):
-        # Sử dụng temp directory cho cloud environment
+
+# ==================== CONFIG LOADER (Streamlit Secrets) ====================
+class ConfigLoader:
+    """Load configuration from Streamlit Secrets"""
+    
+    @staticmethod
+    def load_from_secrets() -> Optional[List[Dict]]:
+        """Load pages from Streamlit secrets"""
         try:
-            self.cache_dir = Path(tempfile.gettempdir()) / "meta_cache"
+            # Check if secrets exist
+            if 'facebook_pages' in st.secrets:
+                pages = st.secrets['facebook_pages']
+                if isinstance(pages, list) and len(pages) > 0:
+                    logger.info(f"✅ Loaded {len(pages)} page(s) from Streamlit Secrets")
+                    return pages
+            return None
+        except Exception as e:
+            logger.error(f"Error loading secrets: {e}")
+            return None
+    
+    @staticmethod
+    def get_config_source() -> str:
+        """Get configuration source description"""
+        return "🔐 Streamlit Secrets (Secure)"
+
+
+# ==================== CACHE MANAGER ====================
+class CacheManager:
+    """Manage cache using temp directory and session state"""
+    
+    def __init__(self):
+        self.use_file_cache = False
+        try:
+            self.cache_dir = Path(tempfile.gettempdir()) / "meta_cache_v4"
             self.cache_dir.mkdir(exist_ok=True)
             self.use_file_cache = True
-        except:
-            self.use_file_cache = False
-            logger.warning("Cannot create cache directory, using session cache only")
+        except Exception as e:
+            logger.warning(f"Cannot create file cache: {e}")
     
-    def _get_cache_key(self, key: str) -> str:
+    def _get_key(self, key: str) -> str:
         return hashlib.md5(key.encode('utf-8')).hexdigest()
     
-    def get(self, key: str, ttl: int = CACHE_TTL) -> Optional[any]:
-        # Check session state first (more reliable in cloud)
-        session_key = f"cache_{self._get_cache_key(key)}"
+    def get(self, key: str, ttl: int = CACHE_TTL_SECONDS) -> Optional[any]:
+        """Get cached value"""
+        # Check session state first (fastest)
+        session_key = f"cache_{self._get_key(key)}"
         if session_key in st.session_state:
             cache_time = st.session_state.get(f"{session_key}_time")
             if cache_time and datetime.now() - cache_time < timedelta(seconds=ttl):
                 return st.session_state[session_key]
         
-        # Try file cache if available
+        # Check file cache (backup)
         if self.use_file_cache:
             try:
-                cache_file = self.cache_dir / f"{self._get_cache_key(key)}.json"
+                cache_file = self.cache_dir / f"{self._get_key(key)}.json"
                 if cache_file.exists():
                     with open(cache_file, 'r', encoding='utf-8') as f:
                         data = json.load(f)
                         cache_time = datetime.fromisoformat(data['timestamp'])
                         if datetime.now() - cache_time < timedelta(seconds=ttl):
                             return data['value']
-            except:
+            except Exception:
                 pass
+        
         return None
     
     def set(self, key: str, value: any):
-        session_key = f"cache_{self._get_cache_key(key)}"
+        """Set cached value"""
+        # Save to session state
+        session_key = f"cache_{self._get_key(key)}"
         st.session_state[session_key] = value
         st.session_state[f"{session_key}_time"] = datetime.now()
         
-        # Try file cache if available
+        # Save to file cache (backup)
         if self.use_file_cache:
             try:
-                cache_file = self.cache_dir / f"{self._get_cache_key(key)}.json"
+                cache_file = self.cache_dir / f"{self._get_key(key)}.json"
                 with open(cache_file, 'w', encoding='utf-8') as f:
-                    json.dump({'timestamp': datetime.now().isoformat(), 'value': value}, f, default=str)
-            except:
+                    json.dump({
+                        'timestamp': datetime.now().isoformat(),
+                        'value': value
+                    }, f, default=str, ensure_ascii=False)
+            except Exception:
                 pass
     
     def clear(self):
+        """Clear all cache"""
         # Clear session cache
         keys_to_remove = [k for k in st.session_state.keys() if k.startswith('cache_')]
         for k in keys_to_remove:
             del st.session_state[k]
         
-        # Clear file cache if available
+        # Clear file cache
         if self.use_file_cache:
             try:
                 for cache_file in self.cache_dir.glob("*.json"):
                     cache_file.unlink()
-            except:
+                logger.info("File cache cleared")
+            except Exception:
                 pass
-        logger.info("Cache cleared")
+
 
 # ==================== FACEBOOK API HANDLER ====================
-class FacebookAPIHandler:
+class FacebookAPI:
+    """Facebook Graph API handler"""
+    
     def __init__(self):
         self.cache = CacheManager()
         self.session = requests.Session()
     
     def _request(self, url: str, params: Dict) -> Optional[Dict]:
+        """Make API request"""
         try:
-            resp = self.session.get(url, params=params, timeout=REQUEST_TIMEOUT)
-            if resp.status_code == 200:
-                return resp.json()
+            response = self.session.get(url, params=params, timeout=REQUEST_TIMEOUT)
+            if response.status_code == 200:
+                return response.json()
             else:
-                logger.warning(f"API {resp.status_code}")
+                logger.warning(f"API error {response.status_code}")
                 return None
         except Exception as e:
-            logger.error(f"Request error: {e}")
+            logger.error(f"Request failed: {e}")
             return None
     
-    def fetch_page_data(self, page_id: str, token: str, force_refresh: bool = False) -> FacebookPageData:
-        cache_key = f"fb_{page_id}_{token[:20]}"
+    def fetch_page(self, page_id: str, token: str, force_refresh: bool = False) -> FacebookPageData:
+        """Fetch all data for a single page"""
+        cache_key = f"page_{page_id}_{token[:20]}"
         
         if not force_refresh:
             cached = self.cache.get(cache_key)
@@ -228,41 +331,47 @@ class FacebookAPIHandler:
         logger.info(f"🌐 API: {page_id}")
         
         try:
-            base_url = f'https://graph.facebook.com/{API_VER}/{page_id}'
+            # Get basic info
+            base_url = f'https://graph.facebook.com/{API_VERSION}/{page_id}'
             info = self._request(base_url, {
                 'fields': 'name,fan_count,followers_count,category',
                 'access_token': token
             })
             
             if not info:
-                raise Exception("Không thể lấy thông tin trang")
+                raise Exception("Cannot fetch page info")
             
-            insights_url = f'https://graph.facebook.com/{API_VER}/{page_id}/insights'
+            # Get insights
+            insights_url = f'{base_url}/insights'
+            
+            # Viewers (reach)
             viewers_data = self._request(insights_url, {
                 'metric': 'page_total_media_view_unique',
                 'period': 'days_28',
                 'access_token': token
             })
             
-            media_views_data = self._request(insights_url, {
+            # Media views
+            media_data = self._request(insights_url, {
                 'metric': 'page_media_view',
                 'period': 'days_28',
                 'access_token': token
             })
             
-            viewers_28d = 0
-            media_views_28d = 0
+            viewers = 0
+            media_views = 0
             
-            if viewers_data and 'data' in viewers_data and viewers_data['data']:
+            if viewers_data and viewers_data.get('data'):
                 values = viewers_data['data'][0].get('values', [])
                 if values:
-                    viewers_28d = values[-1].get('value', 0)
+                    viewers = values[-1].get('value', 0)
             
-            if media_views_data and 'data' in media_views_data and media_views_data['data']:
-                values = media_views_data['data'][0].get('values', [])
+            if media_data and media_data.get('data'):
+                values = media_data['data'][0].get('values', [])
                 if values:
-                    media_views_28d = values[-1].get('value', 0)
+                    media_views = values[-1].get('value', 0)
             
+            # Get recent posts
             posts = []
             posts_data = self._request(f'{base_url}/posts', {
                 'fields': 'id,message,created_time,permalink_url',
@@ -270,15 +379,16 @@ class FacebookAPIHandler:
                 'access_token': token
             })
             
-            if posts_data and 'data' in posts_data:
-                for post in posts_data['data']:
+            if posts_data and posts_data.get('data'):
+                for post in posts_data['data'][:10]:
                     post_viewers = 0
-                    post_insight = self._request(f'https://graph.facebook.com/{API_VER}/{post["id"]}/insights', {
-                        'metric': 'post_total_media_view_unique',
-                        'access_token': token
-                    })
                     
-                    if post_insight and 'data' in post_insight and post_insight['data']:
+                    post_insight = self._request(
+                        f'https://graph.facebook.com/{API_VERSION}/{post["id"]}/insights',
+                        {'metric': 'post_total_media_view_unique', 'access_token': token}
+                    )
+                    
+                    if post_insight and post_insight.get('data'):
                         vals = post_insight['data'][0].get('values', [])
                         if vals:
                             post_viewers = vals[-1].get('value', 0)
@@ -296,32 +406,39 @@ class FacebookAPIHandler:
                 followers=info.get('followers_count', 0),
                 likes=info.get('fan_count', 0),
                 category=info.get('category', 'General'),
-                viewers_28d=viewers_28d,
-                media_views_28d=media_views_28d,
+                viewers_28d=viewers,
+                media_views_28d=media_views,
                 posts=posts,
                 last_updated=datetime.now(),
                 error=None
             )
             
             self.cache.set(cache_key, asdict(page_data))
+            logger.info(f"✅ {page_data.page_name}: {viewers:,} viewers")
             return page_data
             
         except Exception as e:
             logger.error(f"Error: {e}")
             return FacebookPageData(
-                page_id=page_id, page_name="Lỗi",
+                page_id=page_id,
+                page_name="Error",
                 followers=0, likes=0, category="",
                 viewers_28d=0, media_views_28d=0,
-                posts=[], last_updated=datetime.now(),
+                posts=[],
+                last_updated=datetime.now(),
                 error=str(e)
             )
 
-# ==================== SESSION STATE MANAGER ====================
-class SessionStateManager:
+
+# ==================== SESSION MANAGER ====================
+class SessionManager:
+    """Manage session state for page data"""
+    
     @staticmethod
     def get_data() -> Optional[List[FacebookPageData]]:
-        if SESSION_CACHE_KEY in st.session_state:
-            data = st.session_state[SESSION_CACHE_KEY]
+        """Get cached page data from session"""
+        if SESSION_DATA_KEY in st.session_state:
+            data = st.session_state[SESSION_DATA_KEY]
             if data and isinstance(data[0], dict):
                 data = [FacebookPageData(**item) for item in data]
             return data
@@ -329,31 +446,36 @@ class SessionStateManager:
     
     @staticmethod
     def set_data(data: List[FacebookPageData]):
-        st.session_state[SESSION_CACHE_KEY] = [asdict(item) for item in data]
-        st.session_state[LAST_FETCH_KEY] = datetime.now()
+        """Save page data to session"""
+        st.session_state[SESSION_DATA_KEY] = [asdict(item) for item in data]
+        st.session_state[SESSION_TIME_KEY] = datetime.now()
     
     @staticmethod
-    def get_last_fetch_time() -> Optional[datetime]:
-        if LAST_FETCH_KEY in st.session_state:
-            return st.session_state[LAST_FETCH_KEY]
-        return None
+    def get_last_fetch() -> Optional[datetime]:
+        """Get last fetch time"""
+        return st.session_state.get(SESSION_TIME_KEY)
     
     @staticmethod
-    def is_data_stale(max_age_minutes: int = 60) -> bool:
-        last_fetch = SessionStateManager.get_last_fetch_time()
+    def is_stale(max_minutes: int = 60) -> bool:
+        """Check if cached data is stale"""
+        last_fetch = SessionManager.get_last_fetch()
         if not last_fetch:
             return True
-        return datetime.now() - last_fetch > timedelta(minutes=max_age_minutes)
+        return datetime.now() - last_fetch > timedelta(minutes=max_minutes)
     
     @staticmethod
     def clear():
-        if SESSION_CACHE_KEY in st.session_state:
-            del st.session_state[SESSION_CACHE_KEY]
-        if LAST_FETCH_KEY in st.session_state:
-            del st.session_state[LAST_FETCH_KEY]
+        """Clear session cache"""
+        if SESSION_DATA_KEY in st.session_state:
+            del st.session_state[SESSION_DATA_KEY]
+        if SESSION_TIME_KEY in st.session_state:
+            del st.session_state[SESSION_TIME_KEY]
+
 
 # ==================== UI COMPONENTS ====================
-class DashboardUI:
+class UI:
+    """User interface components"""
+    
     @staticmethod
     def render_header():
         st.markdown("""
@@ -363,11 +485,14 @@ class DashboardUI:
             <div style='display: flex; justify-content: space-between; align-items: center'>
                 <div>
                     <h1 style='margin: 0'>🚀 Meta System Intelligence PRO</h1>
-                    <p style='margin: 8px 0 0 0; color: #cbd5e1'>Công cụ phân tích Fanpage Facebook • Chống Spam • Cache Thông Minh</p>
+                    <p style='margin: 8px 0 0 0; color: #cbd5e1'>
+                        Facebook Page Analytics • Real-time • Secure
+                    </p>
                 </div>
                 <div>
-                    <span style='padding: 6px 12px; border-radius: 999px; background: rgba(16,185,129,0.2); border: 1px solid #10b981'>
-                        🟢 v3.3
+                    <span style='padding: 6px 12px; border-radius: 999px; 
+                                 background: rgba(16,185,129,0.2); border: 1px solid #10b981'>
+                        🟢 ACTIVE
                     </span>
                 </div>
             </div>
@@ -375,314 +500,261 @@ class DashboardUI:
         """, unsafe_allow_html=True)
     
     @staticmethod
+    def render_sidebar(total_pages: int = 0):
+        """Render sidebar with controls"""
+        with st.sidebar:
+            st.markdown("### 🎮 Controls")
+            
+            mode = st.radio(
+                "View Mode",
+                ['📊 Overview', '📈 Page Analytics', '📉 Export Data'],
+                label_visibility="collapsed"
+            )
+            
+            st.markdown("---")
+            
+            # Buttons row
+            col1, col2 = st.columns(2)
+            with col1:
+                refresh = st.button("🔄 Refresh", use_container_width=True, key="refresh_btn")
+            with col2:
+                clear = st.button("🗑️ Clear Cache", use_container_width=True, key="clear_btn")
+            
+            if refresh:
+                CacheManager().clear()
+                SessionManager.clear()
+                st.cache_data.clear()
+                st.rerun()
+            
+            if clear:
+                CacheManager().clear()
+                st.success("✅ Cache cleared!")
+                time.sleep(1)
+                st.rerun()
+            
+            st.markdown("---")
+            
+            # Search
+            search = st.text_input("🔍 Search Pages", placeholder="Page name...")
+            
+            st.markdown("---")
+            
+            # Security badge
+            st.markdown("""
+            <div style='background: rgba(16, 185, 129, 0.15); border-radius: 8px; padding: 8px; text-align: center'>
+                🔐 <strong>Streamlit Secrets</strong><br>
+                <span style='font-size: 11px'>Tokens are encrypted</span>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("---")
+            
+            # Stats placeholder
+            stats_placeholder = st.empty()
+            
+            if total_pages > 0:
+                stats_placeholder.metric("📊 Pages Loaded", total_pages)
+            
+            # Tips
+            st.caption("💡 **Tips**")
+            st.caption("• Data cached for 1 hour")
+            st.caption("• Only 1 API call per page/hour")
+            st.caption("• Switch tabs = NO extra API calls")
+            
+            return mode, search
+    
+    @staticmethod
     def render_cache_info():
-        last_fetch = SessionStateManager.get_last_fetch_time()
-        data = SessionStateManager.get_data()
+        """Render cache status info"""
+        last_fetch = SessionManager.get_last_fetch()
+        data = SessionManager.get_data()
         
         if data and last_fetch:
             age = (datetime.now() - last_fetch).seconds // 60
             st.markdown(f"""
             <div class='cache-info'>
-                📦 <strong>Trạng thái Cache:</strong> Đã tải {len(data)} trang • {age} phút trước
-                <br>🔄 <strong>Tự động cập nhật sau 60 phút</strong> để tránh bị chặn
+                📦 <strong>Cache:</strong> {len(data)} pages • {age} minutes ago
+                <br>🔄 Auto-refresh after 60 minutes
             </div>
             """, unsafe_allow_html=True)
         else:
             st.markdown("""
             <div class='cache-info'>
-                ⚡ <strong>Sẵn sàng tải dữ liệu</strong> • Nhấn nút làm mới để lấy dữ liệu từ Facebook
+                ⚡ <strong>Ready</strong> • Click Refresh to load data from Facebook
             </div>
             """, unsafe_allow_html=True)
     
     @staticmethod
-    def render_sidebar():
-        with st.sidebar:
-            st.markdown("### 🎮 Điều Khiển")
-            mode = st.radio("Chế Độ Xem", ['📊 Tổng Quan', '📈 Phân Tích Trang', '📉 Xuất Dữ Liệu'])
-            
-            st.markdown("---")
-            
-            # Two buttons in one row
-            col1, col2 = st.columns(2)
-            with col1:
-                refresh_clicked = st.button("🔄 Làm Mới", use_container_width=True, key="refresh_btn")
-                if refresh_clicked:
-                    st.markdown("""
-                    <style>
-                    div[data-testid="column"]:first-child button {
-                        background: linear-gradient(90deg, #10b981, #059669);
-                        border: none;
-                    }
-                    </style>
-                    """, unsafe_allow_html=True)
-            
-            with col2:
-                clear_clicked = st.button("🗑️ Xóa Cache", use_container_width=True, key="clear_btn")
-                if clear_clicked:
-                    st.markdown("""
-                    <style>
-                    div[data-testid="column"]:last-child button {
-                        background: linear-gradient(90deg, #ef4444, #dc2626);
-                        border: none;
-                    }
-                    </style>
-                    """, unsafe_allow_html=True)
-            
-            if refresh_clicked:
-                CacheManager().clear()
-                SessionStateManager.clear()
-                st.cache_data.clear()
-                st.rerun()
-            
-            if clear_clicked:
-                CacheManager().clear()
-                st.success("✅ Đã xóa cache!")
-                time.sleep(1)
-                st.rerun()
-            
-            st.markdown("---")
-            search = st.text_input("🔍 Tìm Kiếm", placeholder="Tên trang...")
-            
-            st.markdown("---")
-            stats_placeholder = st.empty()
-            
-            st.markdown("---")
-            st.caption("💡 **Bảo Vệ Chống Spam**")
-            st.caption("• Dữ liệu được cache 60 phút")
-            st.caption("• Chỉ gọi API 1 lần mỗi giờ")
-            st.caption("• Chuyển tab = KHÔNG gọi API")
-            
-            return mode, search, stats_placeholder
-    
-    @staticmethod
     def render_overview(pages_data: List[FacebookPageData]):
-        valid = [p for p in pages_data if not p.error]
+        """Render overview page"""
+        valid = [p for p in pages_data if not p.error and p.followers > 0]
         
         if not valid:
-            st.warning("Không có dữ liệu. Nhấn 'Làm Mới' để tải.")
+            st.warning("No valid data. Click 'Refresh' to load from Facebook.")
             return
         
+        # Summary metrics
         total_followers = sum(p.followers for p in valid)
         total_viewers = sum(p.viewers_28d for p in valid)
-        total_media_views = sum(p.media_views_28d for p in valid)
+        total_posts = sum(len(p.posts) for p in valid)
         
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("📄 Tổng Số Trang", len(valid))
-        c2.metric("👥 Tổng Người Theo Dõi", f"{total_followers:,}")
-        c3.metric("👁️ Lượt Xem", f"{total_viewers:,}")
-        c4.metric("🎬 Lượt Xem Nội Dung", f"{total_media_views:,}")
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("📄 Total Pages", len(valid))
+        col2.metric("👥 Total Followers", f"{total_followers:,}")
+        col3.metric("👁️ Total Viewers", f"{total_viewers:,}")
+        col4.metric("📝 Total Posts", total_posts)
         
-        df = pd.DataFrame([{
-            'Tên Trang': p.page_name,
-            'Danh Mục': p.category,
-            'Người Theo Dõi': p.followers,
-            'Lượt Xem': p.viewers_28d,
-            'Lượt Xem ND': p.media_views_28d
+        # Pages table
+        df_pages = pd.DataFrame([{
+            'Page Name': p.page_name,
+            'Category': p.category,
+            'Followers': p.followers,
+            'Viewers (28d)': p.viewers_28d,
+            'Media Views': p.media_views_28d
         } for p in valid])
         
-        st.markdown("### 📊 Danh Sách Trang")
-        
+        st.markdown("### 📊 Pages Overview")
         st.dataframe(
-            df.sort_values('Người Theo Dõi', ascending=False),
+            df_pages.sort_values('Followers', ascending=False),
             use_container_width=True,
             hide_index=True,
             column_config={
-                "Người Theo Dõi": st.column_config.NumberColumn("Người Theo Dõi", format="%d"),
-                "Lượt Xem": st.column_config.NumberColumn("Lượt Xem", format="%d"),
-                "Lượt Xem ND": st.column_config.NumberColumn("Lượt Xem ND", format="%d"),
+                'Followers': st.column_config.NumberColumn(format="%d"),
+                'Viewers (28d)': st.column_config.NumberColumn(format="%d"),
+                'Media Views': st.column_config.NumberColumn(format="%d"),
             }
         )
         
+        # Top posts
         all_posts = []
-        for p in valid:
-            for post in p.posts:
+        for page in valid:
+            for post in page.posts:
                 if post.get('viewers', 0) > 0:
                     all_posts.append({
-                        'Trang': p.page_name,
-                        'Ngày': post['created_time'][:10] if post['created_time'] else 'N/A',
-                        'Nội Dung': (post['message'][:60] + '...') if len(post['message']) > 60 else post['message'],
-                        'Lượt Xem': post['viewers']
+                        'Page': page.page_name,
+                        'Date': post['created_time'][:10] if post['created_time'] else 'N/A',
+                        'Content': (post['message'][:60] + '...') if len(post['message']) > 60 else post['message'],
+                        'Viewers': post['viewers']
                     })
         
         if all_posts:
-            df_posts = pd.DataFrame(all_posts).sort_values('Lượt Xem', ascending=False).head(10)
-            st.markdown("### 🔥 Bài Viết Nổi Bật Nhất")
+            df_posts = pd.DataFrame(all_posts).sort_values('Viewers', ascending=False).head(10)
+            st.markdown("### 🔥 Top Posts")
             st.dataframe(df_posts, use_container_width=True, hide_index=True)
     
     @staticmethod
     def render_page_detail(pages_data: List[FacebookPageData]):
-        valid = [p for p in pages_data if not p.error]
+        """Render single page analytics"""
+        valid = [p for p in pages_data if not p.error and p.followers > 0]
+        
         if not valid:
-            st.warning("Không có dữ liệu")
+            st.warning("No valid data. Click 'Refresh' to load.")
             return
         
-        selected = st.selectbox("Chọn Trang", [p.page_name for p in valid])
+        selected = st.selectbox("Select Page", [p.page_name for p in valid])
         page = next(p for p in valid if p.page_name == selected)
         
+        # Calculate metrics
         if page.followers > 0:
-            viewer_rate = (page.viewers_28d / page.followers) * 100
-            viewer_rate_display = min(viewer_rate, 100)
+            viewer_rate = min((page.viewers_28d / page.followers) * 100, 100)
         else:
-            viewer_rate_display = 0
+            viewer_rate = 0
         
-        health = min(100, viewer_rate_display * 2)
+        health_score = min(100, viewer_rate * 2)
         
+        # Header card
         st.markdown(f"""
-        <div style='background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 18px; padding: 15px;'>
+        <div class='success-card'>
             <h2>📱 {page.page_name}</h2>
-            <p><strong>Danh Mục:</strong> {page.category}</p>
-            <p><strong>Cập nhật lần cuối:</strong> {page.last_updated.strftime('%H:%M:%S %d/%m/%Y')}</p>
-            <div style='font-size: 2rem; font-weight: bold'>{health:.0f}/100</div>
-            <div>Điểm Sức Khỏe</div>
+            <p><strong>Category:</strong> {page.category}</p>
+            <p><strong>Last updated:</strong> {page.last_updated.strftime('%H:%M:%S %d/%m/%Y')}</p>
+            <div style='font-size: 2rem; font-weight: bold; margin-top: 10px'>{health_score:.0f}/100</div>
+            <div>Health Score</div>
         </div>
         """, unsafe_allow_html=True)
         
-        c1, c2, c3 = st.columns(3)
-        c1.metric("👥 Người Theo Dõi", f"{page.followers:,}")
-        c2.metric("👍 Lượt Thích", f"{page.likes:,}")
-        c3.metric("👁️ Lượt Xem", f"{page.viewers_28d:,}")
+        # Metrics row
+        col1, col2, col3 = st.columns(3)
+        col1.metric("👥 Followers", f"{page.followers:,}")
+        col2.metric("👍 Likes", f"{page.likes:,}")
+        col3.metric("👁️ Viewers (28d)", f"{page.viewers_28d:,}")
         
-        st.metric("📈 Tỷ Lệ Tương Tác", f"{viewer_rate_display:.2f}%")
+        st.metric("📈 Viewer Rate", f"{viewer_rate:.2f}%")
         
+        # Recent posts
         if page.posts:
-            st.markdown("### 📝 Bài Viết Gần Đây")
+            st.markdown("### 📝 Recent Posts")
             for post in page.posts[:10]:
                 with st.container():
                     cols = st.columns([3, 1])
-                    cols[0].markdown(f"**📅 {post['created_time'][:10] if post['created_time'] else 'Không rõ'}**")
-                    cols[0].markdown(post['message'] if post['message'] else "*Không có nội dung*")
-                    if post['viewers'] > 0:
-                        cols[1].metric("Lượt Xem", f"{post['viewers']:,}")
-                    else:
-                        cols[1].markdown("📊 *Chưa có dữ liệu*")
+                    date_str = post['created_time'][:10] if post['created_time'] else 'Unknown'
+                    cols[0].markdown(f"**📅 {date_str}**")
+                    cols[0].markdown(post['message'] if post['message'] else "*No content*")
+                    cols[1].metric("Viewers", f"{post['viewers']:,}")
                     st.divider()
     
     @staticmethod
     def render_export(pages_data: List[FacebookPageData]):
-        valid = [p for p in pages_data if not p.error]
+        """Render export section"""
+        valid = [p for p in pages_data if not p.error and p.followers > 0]
+        
         if not valid:
-            st.warning("Không có dữ liệu để xuất")
+            st.warning("No data to export. Click 'Refresh' to load.")
             return
         
         export_data = []
-        for p in valid:
+        for page in valid:
             export_data.append({
-                'Tên Trang': p.page_name,
-                'Danh Mục': p.category,
-                'ID Trang': p.page_id,
-                'Người Theo Dõi': p.followers,
-                'Lượt Thích': p.likes,
-                'Lượt Xem': p.viewers_28d,
-                'Lượt Xem Nội Dung': p.media_views_28d,
-                'Cập Nhật Lần Cuối': p.last_updated.strftime('%Y-%m-%d %H:%M:%S')
+                'Page Name': page.page_name,
+                'Category': page.category,
+                'Page ID': page.page_id,
+                'Followers': page.followers,
+                'Likes': page.likes,
+                'Viewers (28d)': page.viewers_28d,
+                'Media Views': page.media_views_28d,
+                'Last Updated': page.last_updated.strftime('%Y-%m-%d %H:%M:%S')
             })
         
         df = pd.DataFrame(export_data)
-        csv = df.to_csv(index=False).encode('utf-8-sig')
+        csv_data = df.to_csv(index=False).encode('utf-8-sig')
         
         st.download_button(
-            "📥 Tải CSV",
-            csv,
+            "📥 Download CSV",
+            csv_data,
             f"facebook_analytics_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            "text/csv"
+            "text/csv",
+            use_container_width=True
         )
+        
+        st.markdown("### 📊 Data Preview")
         st.dataframe(df, use_container_width=True)
 
-# ==================== MAIN ====================
-def main():
-    fb_handler = FacebookAPIHandler()
-    ui = DashboardUI()
-    
-    # Try to load config from multiple locations
-    config_path = None
-    possible_paths = ['config.json', 'facebook_config.json', 'fb_config.json']
-    
-    for path in possible_paths:
-        if Path(path).exists():
-            config_path = Path(path)
-            break
-    
-    # Also check in parent directory for cloud deployment
-    if not config_path and Path('../config.json').exists():
-        config_path = Path('../config.json')
-    
-    if not config_path:
-        st.error("❌ Không tìm thấy file config.json")
-        st.code("""
-{
-  "pages": [
-    {
-      "id": "ID_TRANG_CUA_BAN",
-      "name": "Tên Trang Của Bạn", 
-      "access_token": "TOKEN_TRUY_CAP_CUA_BAN"
-    }
-  ]
-}
-        """, language='json')
-        st.info("📝 Vui lòng tạo file 'config.json' với nội dung trên và đặt trong cùng thư mục với ứng dụng")
-        st.stop()
-    
-    try:
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = json.load(f)
-        st.success(f"✅ Đã tải cấu hình từ {config_path.name}")
-    except Exception as e:
-        st.error(f"Lỗi đọc config: {e}")
-        st.stop()
-    
-    pages = config.get('pages', [])
-    if not pages:
-        st.warning("Chưa có trang nào trong config")
-        st.stop()
-    
-    pages_data = SessionStateManager.get_data()
-    need_fetch = not pages_data or SessionStateManager.is_data_stale(max_age_minutes=60)
-    
-    ui.render_header()
-    mode, search, stats_placeholder = ui.render_sidebar()
-    ui.render_cache_info()
-    
-    if need_fetch:
-        with st.spinner(f"📡 Đang tải {len(pages)} trang từ Facebook (chỉ 1 lần mỗi giờ)..."):
-            pages_data = []
-            progress = st.progress(0)
-            
-            for i, page in enumerate(pages):
-                logger.info(f"Đang tải: {page.get('name', page.get('id'))}")
-                data = fb_handler.fetch_page_data(page['id'], page['access_token'])
-                pages_data.append(data)
-                progress.progress((i + 1) / len(pages))
-                time.sleep(0.5)
-            
-            progress.empty()
-            SessionStateManager.set_data(pages_data)
-            st.success(f"✅ Đã tải {len(pages_data)} trang. Dữ liệu được cache trong 60 phút.")
-            time.sleep(1)
-            st.rerun()
-    else:
-        if pages_data:
-            last_fetch = SessionStateManager.get_last_fetch_time()
-            age = (datetime.now() - last_fetch).seconds // 60
-            st.info(f"📦 Đang dùng dữ liệu cache (tải {age} phút trước). Chuyển tab cực nhanh - không gọi API!")
-    
-    if pages_data:
-        valid = [p for p in pages_data if not p.error]
-        if valid:
-            stats_placeholder.metric("📊 Trang Hoạt Động", len(valid))
-            stats_placeholder.metric("👥 Tổng Người Theo Dõi", f"{sum(p.followers for p in valid):,}")
-    
-    if pages_data and search:
-        pages_data = [p for p in pages_data if search.lower() in p.page_name.lower()]
-    
-    if pages_data:
-        if mode == '📊 Tổng Quan':
-            ui.render_overview(pages_data)
-        elif mode == '📈 Phân Tích Trang':
-            ui.render_page_detail(pages_data)
-        elif mode == '📉 Xuất Dữ Liệu':
-            ui.render_export(pages_data)
-    else:
-        st.warning("Không có dữ liệu. Vui lòng đợi tải lần đầu.")
 
-if __name__ == "__main__":
-    main()
+# ==================== MAIN APPLICATION ====================
+def main():
+    """Main application entry point"""
+    
+    # Load config from Streamlit Secrets
+    pages_config = ConfigLoader.load_from_secrets()
+    
+    if not pages_config:
+        st.error("🔒 **No configuration found in Streamlit Secrets!**")
+        
+        with st.expander("📖 Setup Instructions", expanded=True):
+            st.markdown("""
+            ### How to configure Streamlit Secrets:
+            
+            1. **Create folder**: `.streamlit/` in your project root
+            2. **Create file**: `.streamlit/secrets.toml`
+            3. **Add your pages**:
+            
+            ```toml
+            [[facebook_pages]]
+            id = "YOUR_PAGE_ID"
+            name = "Your Page Name"
+            access_token = "YOUR_ACCESS_TOKEN"
+            
+            [[facebook_pages]]
+            id = "YOUR_SECOND_PAGE_ID"
+            name = "Your Second Page"
+            access_token = "YOUR_SECOND_ACCESS_TOKEN"

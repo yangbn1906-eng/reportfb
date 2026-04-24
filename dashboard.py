@@ -19,7 +19,7 @@ import time
 
 # ==================== CONFIGURATION ====================
 st.set_page_config(
-    page_title='Meta System Intelligence PRO v3.3', 
+    page_title='Anbub.io', 
     layout='wide',
     page_icon="🚀"
 )
@@ -397,8 +397,7 @@ class DashboardUI:
     @staticmethod
     def render_sidebar():
         with st.sidebar:
-            st.markdown("### 🎮 Điều Khiển")
-            mode = st.radio("Chế Độ Xem", ['📊 Tổng Quan', '📈 Phân Tích Trang', '📉 Xuất Dữ Liệu'])
+            mode = st.radio("🚀 Meta System Intelligence PRO", ['📊 Tổng Quan', '📈 Phân Tích Trang', '📉 Xuất Dữ Liệu'])
             
             st.markdown("---")
             

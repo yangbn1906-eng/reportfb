@@ -591,11 +591,4 @@ def main():
     if not pages_config:
         st.error("🔒 No configuration found in Streamlit Secrets!")
         
-        with st.expander("📖 Setup Instructions", expanded=True):
-            st.markdown("""
-            **How to configure Streamlit Secrets:**
-            
-            1. Create folder: `.streamlit/` in your project root
-            2. Create file: `.streamlit/secrets.toml`
-            3. Add your pages:
-            
+        

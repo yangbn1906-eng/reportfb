@@ -363,7 +363,7 @@ class DashboardUI:
             <div style='display: flex; justify-content: space-between; align-items: center'>
                 <div>
                     <h1 style='margin: 0'>🚀 Meta System Intelligence PRO</h1>
-                    <p style='margin: 8px 0 0 0; color: #cbd5e1'>Công cụ phân tích Fanpage Facebook • Chống Spam • Cache Thông Minh</p>
+                    <p style='margin: 8px 0 0 0; color: #cbd5e1'>Công cụ quản lí Fanpage Facebook • Realtime • Cache Thông Minh</p>
                 </div>
                 <div>
                     <span style='padding: 6px 12px; border-radius: 999px; background: rgba(16,185,129,0.2); border: 1px solid #10b981'>
@@ -446,7 +446,7 @@ class DashboardUI:
             stats_placeholder = st.empty()
             
             st.markdown("---")
-            st.caption("💡 **Bảo Vệ Chống Spam**")
+            st.caption("💡 **Update V3.3**")
             st.caption("• Dữ liệu được cache 60 phút")
             st.caption("• Chỉ gọi API 1 lần mỗi giờ")
             st.caption("• Chuyển tab = KHÔNG gọi API")

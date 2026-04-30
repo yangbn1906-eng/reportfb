@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 # Constants
 API_VER = 'v25.0'
-CACHE_TTL = 3600
+CACHE_TTL = 86400
 REQUEST_TIMEOUT = 30
 SESSION_CACHE_KEY = 'facebook_pages_data'
 LAST_FETCH_KEY = 'last_fetch_time'
@@ -351,6 +351,20 @@ class SessionStateManager:
             del st.session_state[SESSION_CACHE_KEY]
         if LAST_FETCH_KEY in st.session_state:
             del st.session_state[LAST_FETCH_KEY]
+    @staticmethod
+    def should_refresh_today(refresh_hour: int = 9) -> bool:
+        last_fetch = SessionStateManager.get_last_fetch_time()
+        now = datetime.now()
+
+        # Chưa từng fetch
+        if not last_fetch:
+            return now.hour >= refresh_hour
+
+    # Sang ngày mới và đã qua giờ refresh
+        if now.date() > last_fetch.date() and now.hour >= refresh_hour:
+            return True
+
+        return False        
 
 # ==================== UI COMPONENTS ====================
 class DashboardUI:
@@ -384,7 +398,7 @@ class DashboardUI:
             st.markdown(f"""
             <div class='cache-info'>
                 📦 <strong>Trạng thái Cache:</strong> Đã tải {len(data)} trang • {age} phút trước
-                <br>🔄 <strong>Tự động cập nhật sau 60 phút</strong> để tránh bị chặn
+                <br>🔄 <strong>Tự Động Cập Nhật RealTime Facebook Update</strong> để tránh bị chặn
             </div>
             """, unsafe_allow_html=True)
         else:
@@ -630,8 +644,10 @@ def main():
         st.stop()
     
     pages_data = SessionStateManager.get_data()
-    need_fetch = not pages_data or SessionStateManager.is_data_stale(max_age_minutes=60)
-    
+    need_fetch = (
+    not pages_data 
+    or SessionStateManager.should_refresh_today()
+    )    
     ui.render_header()
     mode, search, stats_placeholder = ui.render_sidebar()
     ui.render_cache_info()
@@ -650,7 +666,7 @@ def main():
             
             progress.empty()
             SessionStateManager.set_data(pages_data)
-            st.success(f"✅ Đã tải {len(pages_data)} trang. Dữ liệu được cache trong 60 phút.")
+            st.success(f"✅ Đã tải {len(pages_data)} trang. Dữ liệu được cập nhật Realtime Facebook Update!.")
             time.sleep(1)
             st.rerun()
     else:

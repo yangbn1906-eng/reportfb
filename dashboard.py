@@ -461,7 +461,7 @@ class DashboardUI:
             
             st.markdown("---")
             st.caption("💡 **Update V3.3**")
-            st.caption("• Dữ liệu được cache Realtime")
+            st.caption("• Daily Sync Engine")
             st.caption("• Chỉ gọi API 1 lần mỗi ngày")
             st.caption("• Chuyển tab = KHÔNG gọi API")
             

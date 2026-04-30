@@ -461,8 +461,8 @@ class DashboardUI:
             
             st.markdown("---")
             st.caption("💡 **Update V3.3**")
-            st.caption("• Dữ liệu được cache 60 phút")
-            st.caption("• Chỉ gọi API 1 lần mỗi giờ")
+            st.caption("• Dữ liệu được cache Realtime")
+            st.caption("• Chỉ gọi API 1 lần mỗi ngày")
             st.caption("• Chuyển tab = KHÔNG gọi API")
             
             return mode, search, stats_placeholder

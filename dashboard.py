@@ -352,7 +352,7 @@ class SessionStateManager:
         if LAST_FETCH_KEY in st.session_state:
             del st.session_state[LAST_FETCH_KEY]
     @staticmethod
-    def should_refresh_today(refresh_hour: int = 9) -> bool:
+    def should_refresh_today(refresh_hour: int = 15) -> bool:
         last_fetch = SessionStateManager.get_last_fetch_time()
         now = datetime.now()
 
